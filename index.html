@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>生字翻翻樂 - 學華語向前走</title>
+    
+    <!-- PWA / App 相關設定 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="生字翻翻樂">
+    <meta name="theme-color" content="#f0f9ff">
+    
+    <link rel="manifest" id="manifest-placeholder">
+    <script>
+        const manifest = {
+            "name": "生字翻翻樂",
+            "short_name": "翻翻樂",
+            "start_url": ".",
+            "display": "standalone",
+            "background_color": "#f0f9ff",
+            "theme_color": "#f0f9ff",
+            "orientation": "portrait",
+            "icons": [
+                {
+                    "src": "https://cdn-icons-png.flaticon.com/512/2097/2097276.png",
+                    "sizes": "192x192",
+                    "type": "image/png"
+                }
+            ]
+        };
+        const stringManifest = JSON.stringify(manifest);
+        const blob = new Blob([stringManifest], {type: 'application/json'});
+        const manifestURL = URL.createObjectURL(blob);
+        document.querySelector('#manifest-placeholder').setAttribute('href', manifestURL);
+    </script>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* --- 3D 相容性修復 --- */
+        .perspective-1000 { 
+            perspective: 1000px; 
+            -webkit-perspective: 1000px; 
+        }
+        .transform-style-3d { 
+            transform-style: preserve-3d; 
+            -webkit-transform-style: preserve-3d; 
+        }
+        .backface-hidden { 
+            -webkit-backface-visibility: hidden; 
+            backface-visibility: hidden;
+        }
+        .rotate-y-180 { 
+            transform: rotateY(180deg);
+            -webkit-transform: rotateY(180deg);
+        }
+        .card-face {
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 1.4rem;
+            transform: translateZ(1px); 
+        }
+        .card-face-back { transform: rotateY(0deg) translateZ(1px); }
+        .card-face-front { transform: rotateY(180deg) translateZ(1px); }
+        
+        /* --- 卡背圖案樣式庫 --- */
+        .pattern-diagonal {
+            background-image: repeating-linear-gradient(
+                45deg,
+                #cbd5e1 0,
+                #cbd5e1 2px,
+                transparent 2px,
+                transparent 10px
+            );
+        }
+        .pattern-grid {
+            background-size: 20px 20px;
+            background-image:
+                linear-gradient(to right, #cbd5e1 1px, transparent 1px),
+                linear-gradient(to bottom, #cbd5e1 1px, transparent 1px);
+        }
+        .pattern-dots {
+          background-image: radial-gradient(#cbd5e1 1.5px, transparent 1.5px);
+          background-size: 24px 24px;
+        }
+        .pattern-large-dots {
+          background-image: radial-gradient(#cbd5e1 4px, transparent 4px);
+          background-size: 24px 24px;
+        }
+
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes pop-in { 
+          0% { opacity: 0; transform: scale(0.8) translateY(20px); } 
+          100% { opacity: 1; transform: scale(1) translateY(0); } 
+        }
+        .animate-fade-in { animation: fade-in 0.4s ease-out forwards; }
+        .animate-pop-in { animation: pop-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+
+        /* --- 列印專用樣式 --- */
+        @media print {
+            @page {
+                size: portrait;
+                margin: 0.5cm;
+            }
+            body {
+                background: white;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .print-only {
+                display: block !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 touch-manipulation select-none">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const Icon = ({ name, className }) => {
+            useEffect(() => {
+                lucide.createIcons();
+            }, []);
+            return <i data-lucide={name} className={className}></i>;
+        };
+
+        const PINYIN_MAP = {
+            '新': { z: 'ㄒㄧㄣ', p: 'xīn' }, '同': { z: 'ㄊㄨㄥˊ', p: 'tóng' }, '學': { z: 'ㄒㄩㄝˊ', p: 'xué' },
+            '自': { z: 'ㄗˋ', p: 'zì' }, '己': { z: 'ㄐㄧˇ', p: 'jǐ' }, '年': { z: 'ㄋㄧㄢˊ', p: 'nián' },
+            '跟': { z: 'ㄍㄣ', p: 'gēn' }, '比': { z: 'ㄅㄧˇ', p: 'bǐ' },
+            '外': { z: 'ㄨㄞˋ', p: 'wài' }, '公': { z: 'ㄍㄨㄥ', p: 'gōng' }, '以': { z: 'ㄧˇ', p: 'yǐ' },
+            '前': { z: 'ㄑㄧㄢˊ', p: 'qián' }, '工': { z: 'ㄍㄨㄥ', p: 'gōng' }, '作': { z: 'ㄗㄨㄛˋ', p: 'zuò' },
+            '班': { z: 'ㄅㄢ', p: 'bān' }, '後': { z: 'ㄏㄡˋ', p: 'hòu' },
+            '去': { z: 'ㄑㄩˋ', p: 'qù' }, '近': { z: 'ㄐㄧㄣˋ', p: 'jìn' }, '買': { z: 'ㄇㄞˇ', p: 'mǎi' },
+            '東': { z: 'ㄉㄨㄥ', p: 'dōng' }, '西': { z: 'ㄒㄧ', p: 'xī' }, '魚': { z: 'ㄩˊ', p: 'yú' },
+            '還': { z: 'ㄏㄞˊ', p: 'hái' }, '可': { z: 'ㄎㄜˇ', p: 'kě' },
+            '出': { z: 'ㄔㄨ', p: 'chū' }, '先': { z: 'ㄒㄧㄢ', p: 'xiān' }, '週': { z: 'ㄓㄡ', p: 'zhōu' },
+            '末': { z: 'ㄇㄛˋ', p: 'mò' }, '晚': { z: 'ㄨㄢˇ', p: 'wǎn' }, '蛋': { z: 'ㄉㄢˋ', p: 'dàn' },
+            '飯': { z: 'ㄈㄢˋ', p: 'fàn' }, '現': { z: 'ㄒㄧㄢˋ', p: 'xiàn' }, '點': { z: 'ㄉㄧㄢˇ', p: 'diǎn' },
+            '黃': { z: 'ㄏㄨㄤˊ', p: 'huáng' }, '綠': { z: 'ㄌㄩˋ', p: 'ㄌㄩˋ' }, '色': { z: 'ㄙㄜˋ', p: 'sè' },
+            '時': { z: 'ㄕˊ', p: 'shí' }, '候': { z: 'ㄏㄡˋ', p: 'hòu' }, '花': { z: 'ㄏㄨㄚ', p: 'huā' },
+            '子': { z: 'ㄗˇ', p: 'zi' }, '紅': { z: 'ㄏㄨㄥˊ', p: 'hóng' }, '白': { z: 'ㄅㄞˊ', p: 'bái' },
+            '說': { z: 'ㄕㄨㄛ', p: 'shuō' }, '對': { z: 'ㄉㄨㄟˋ', p: 'duì' }, '星': { z: 'ㄒㄧㄥ', p: 'xīng' },
+            '期': { z: 'ㄑㄧˊ', p: 'qí' }, '會': { z: 'ㄏㄨㄟˋ', p: 'huì' }, '每': { z: 'ㄇㄟˇ', p: 'měi' },
+            '給': { z: 'ㄍㄟˇ', p: 'gěi' }, '如': { z: 'ㄖㄨˊ', p: 'rú' }, '果': { z: 'ㄍㄨㄛˇ', p: 'guǒ' },
+            '起': { z: 'ㄑㄧˇ', p: 'qǐ' }, '累': { z: 'ㄌㄟˋ', p: 'lèi' }, '早': { z: 'ㄗㄠˇ', p: 'zǎo' },
+            '洗': { z: 'ㄒㄧˇ', p: 'xǐ' }, '昨': { z: 'ㄗㄨㄛˊ', p: 'zuó' }, '過': { z: 'ㄍㄨㄛˋ', p: 'guò' },
+            '別': { z: 'ㄅㄧㄝˊ', p: 'bié' }, '忘': { z: 'ㄨㄤˋ', p: 'wàng' }, '用': { z: 'ㄩㄥˋ', p: 'yòng' },
+            '臉': { z: 'ㄌㄧㄢˇ', p: 'liǎn' },
+            '送': { z: 'ㄙㄨㄥˋ', p: 'sòng' }, '隻': { z: 'ㄓ', p: 'zhī' }, '狗': { z: 'ㄍㄡˇ', p: 'gǒu' },
+            '帶': { z: 'ㄉㄞˋ', p: 'dài' }, '散': { z: 'ㄙㄢˋ', p: 'sàn' }, '步': { z: 'ㄅㄨˋ', p: 'bù' },
+            '貓': { z: 'ㄇㄠ', p: 'māo' }, '非': { z: 'ㄈㄟ', p: 'fei' }, '愛': { z: 'ㄞˋ', p: 'ài' },
+            '南': { z: 'ㄋㄢˊ', p: 'nán' }, '北': { z: 'ㄅㄟˇ', p: 'běi' }, '方': { z: 'ㄈㄤ', p: 'fāng' },
+            '裡': { z: 'ㄌㄧˇ', p: 'lǐ' }, '校': { z: 'ㄒㄧㄠˋ', p: 'xiào' }, '門': { z: 'ㄇㄣˊ', p: 'mén' },
+            '口': { z: 'ㄎㄡˇ', p: 'kǒu' }, '因': { z: 'ㄧㄣ', p: 'yīn' }, '為': { z: 'ㄨㄟˋ', p: 'wèi' },
+            '所': { z: 'ㄙㄨㄛˇ', p: 'suǒ' },
+            '本': { z: 'ㄅㄣˇ', p: 'běn' }, '著': { z: 'ㄓㄜ˙', p: 'zhe' }, '退': { z: 'ㄊㄨㄟˋ', p: 'tuì' },
+            '休': { z: 'ㄒㄧㄡ', p: 'xiū' }, '次': { z: 'ㄘˋ', p: 'cì' }, '旅': { z: 'ㄌㄩˇ', p: 'lǚ' },
+            '行': { z: 'ㄒㄧㄥˊ', p: 'xíng' }, '法': { z: 'ㄈㄚˇ', p: 'fǎ' }, '國': { z: 'ㄍㄨㄛˊ', p: 'guó' },
+            '動': { z: 'ㄉㄨㄥˋ', p: 'dòng' }, '物': { z: 'ㄨˋ', p: 'wù' }, '園': { z: 'ㄩㄢˊ', p: 'yuán' },
+            '老': { z: 'ㄌㄠˇ', p: 'lǎo' }, '希': { z: 'ㄒㄧ', p: 'xī' }, '望': { z: 'ㄨㄤˋ', p: 'wàng' },
+            '但': { z: 'ㄉㄢˋ', p: 'dàn' }, '胖': { z: 'ㄆㄤˋ', p: 'pàng' }, '真': { z: 'ㄓㄣ', p: 'zhēn' },
+            '長': { z: 'ㄔㄤˊ', p: 'cháng' },
+            '久': { z: 'ㄐㄧㄡˇ', p: 'jiǔ' }, '話': { z: 'ㄏㄨㄚˋ', p: 'huà' }, '高': { z: 'ㄍㄠ', p: 'gāo' },
+            '課': { z: 'ㄎㄜˋ', p: 'kè' }, '寫': { z: 'ㄒㄧㄝˇ', p: 'xiě' }, '沒': { z: 'ㄇㄟˊ', p: 'méi' },
+            '題': { z: 'ㄊㄧˊ', p: 'tí' }, '定': { z: 'ㄉㄧㄥˋ', p: 'dìng' }, '意': { z: 'ㄧˋ', p: 'yì' },
+            '思': { z: 'ㄙ', p: 'si' },
+        };
+
+        const LESSONS = [
+            { id: 1, name: "第一課：新同學", words: "新同學自己年跟比" },
+            { id: 2, name: "第二課：我爸爸做生意", words: "外公以前工作班後" },
+            { id: 3, name: "第三課：去超級市場", words: "去近買東西魚還可" },
+            { id: 4, name: "第四課：我想吃漢堡", words: "出先週末晚蛋飯現點" },
+            { id: 5, name: "第五課：秋天快到了", words: "黃綠色時候花子紅白" },
+            { id: 6, name: "第六課：農曆新年", words: "說對星期會每給如果" },
+            { id: 7, name: "第七課：早一點睡覺", words: "起累早洗昨過別忘用臉" },
+            { id: 8, name: "第八課：我的寵物", words: "送隻狗帶散步貓非愛" },
+            { id: 9, name: "第九課：音樂教室在北方", words: "南北方裡校門口因為所" },
+            { id: 10, name: "第十課：外婆住在臺灣", words: "本著退休次旅行法國" },
+            { id: 11, name: "第十一課：去動物園", words: "動物園老希望但胖真長" },
+            { id: 12, name: "第十二課：打網路電話", words: "久話高課寫沒題定意思" }
+        ];
+
+        const COLORS = [
+            'bg-amber-100', 'bg-sky-100', 'bg-emerald-100', 'bg-rose-100', 'bg-indigo-100',
+            'bg-violet-100', 'bg-orange-100', 'bg-teal-100', 'bg-fuchsia-100', 'bg-slate-100'
+        ];
+
+        const PATTERNS = [
+            'pattern-diagonal',
+            'pattern-grid',
+            'pattern-dots',
+            'pattern-large-dots'
+        ];
+
+        // 列印佈局組件
+        const PrintLayout = ({ lesson }) => {
+            const printCards = [];
+            Array.from(lesson.words).forEach((char, index) => {
+                const info = PINYIN_MAP[char] || { z: '??', p: '??' };
+                printCards.push({ type: 'text', content: char });
+                printCards.push({ type: 'pinyin', content: `${info.z} /${info.p}/` });
+            });
+
+            return (
+                <div className="w-full">
+                    <div className="text-center mb-6">
+                        <h1 className="text-3xl font-black text-slate-800 mb-2">{lesson.name} - 生字卡</h1>
+                        <p className="text-slate-500">共 {lesson.words.length} 個生字，{printCards.length} 張卡牌</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-4 gap-4">
+                        {printCards.map((card, idx) => (
+                            <div key={idx} className="aspect-[3/4] border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center p-4 break-inside-avoid relative">
+                                {card.type === 'text' ? (
+                                    <span className="text-5xl font-black text-slate-800">{card.content}</span>
+                                ) : (
+                                    <span className="text-xl font-bold text-slate-700 text-center leading-relaxed">{card.content}</span>
+                                )}
+                                <div className="absolute top-2 left-2 text-[10px] text-slate-300">✂️</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="mt-8 text-center text-sm text-slate-400 border-t pt-4">
+                        Sophia Wong 修訂 | 生字翻翻樂教具
+                    </div>
+                </div>
+            );
+        };
+
+        const InstallGuideModal = ({ onClose }) => {
+            const [os, setOs] = useState('unknown');
+
+            useEffect(() => {
+                const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+                if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) {
+                    setOs('ios');
+                } else if (/android/i.test(userAgent)) {
+                    setOs('android');
+                } else {
+                    setOs('desktop');
+                }
+            }, []);
+
+            return (
+                <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fade-in no-print" onClick={onClose}>
+                    <div className="bg-white w-full max-w-sm rounded-t-3xl md:rounded-3xl p-6 shadow-2xl relative animate-pop-in" onClick={e => e.stopPropagation()}>
+                        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+                            <Icon name="x" className="w-6 h-6" />
+                        </button>
+                        
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="bg-sky-100 p-3 rounded-2xl">
+                                <Icon name="smartphone" className="w-6 h-6 text-sky-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800">如何加入主畫面？</h3>
+                        </div>
+
+                        <div className="text-slate-600 text-sm leading-relaxed mb-6">
+                            將這個遊戲變成 App，隨時都能玩！
+                        </div>
+
+                        {os === 'ios' && (
+                            <div className="space-y-4">
+                                <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                    <div className="bg-white p-2 rounded-lg shadow-sm shrink-0">
+                                        <Icon name="share" className="w-5 h-5 text-blue-500" />
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-slate-700 text-sm">1. 點擊分享按鈕</p>
+                                        <p className="text-xs text-slate-500 mt-1">通常在瀏覽器下方工具列</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                    <div className="bg-white p-2 rounded-lg shadow-sm shrink-0">
+                                        <Icon name="plus-square" className="w-5 h-5 text-slate-700" />
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-slate-700 text-sm">2. 選擇「加入主畫面」</p>
+                                        <p className="text-xs text-slate-500 mt-1">往下滑動選單可以找到</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {os === 'android' && (
+                            <div className="space-y-4">
+                                <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                    <div className="bg-white p-2 rounded-lg shadow-sm shrink-0">
+                                        <Icon name="more-vertical" className="w-5 h-5 text-slate-700" />
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-slate-700 text-sm">1. 點擊選單圖示</p>
+                                        <p className="text-xs text-slate-500 mt-1">位於瀏覽器右上角</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                    <div className="bg-white p-2 rounded-lg shadow-sm shrink-0">
+                                        <Icon name="download" className="w-5 h-5 text-sky-600" />
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-slate-700 text-sm">2. 選擇「安裝應用程式」</p>
+                                        <p className="text-xs text-slate-500 mt-1">或是「加入主畫面」</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {os === 'desktop' && (
+                            <div className="text-center py-4 bg-slate-50 rounded-xl border border-slate-100">
+                                <p className="text-slate-600 font-medium">請使用 <span className="font-bold text-sky-600">Ctrl + D</span> 加入書籤</p>
+                            </div>
+                        )}
+
+                        <button onClick={onClose} className="w-full mt-6 bg-slate-800 text-white font-bold py-3 rounded-xl active:scale-95 transition-transform">
+                            我知道了
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        function App() {
+            const [currentLessonId, setCurrentLessonId] = useState(1);
+            const [cards, setCards] = useState([]);
+            const [flippedCards, setFlippedCards] = useState([]);
+            const [matchedIds, setMatchedIds] = useState([]);
+            const [isDisabled, setIsDisabled] = useState(false);
+            const [moves, setMoves] = useState(0);
+            const [gameWon, setGameWon] = useState(false);
+            const [showInstallModal, setShowInstallModal] = useState(false);
+            const [currentPattern, setCurrentPattern] = useState('pattern-large-dots'); 
+
+            // 載入 Busuanzi 計數器 (修正版: 強制顯示 & HTTPS)
+            useEffect(() => {
+                if (document.getElementById('busuanzi-script')) return;
+                const script = document.createElement('script');
+                script.id = 'busuanzi-script';
+                script.src = "https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js";
+                script.async = true;
+                document.body.appendChild(script);
+            }, []);
+
+            useEffect(() => {
+                initializeGame();
+            }, [currentLessonId]);
+
+            const generateCards = (lessonId) => {
+                const lesson = LESSONS.find(l => l.id === lessonId);
+                const words = Array.from(lesson.words);
+                const cardData = [];
+                words.forEach((char, index) => {
+                    const info = PINYIN_MAP[char] || { z: '??', p: '??' };
+                    const color = COLORS[index % COLORS.length];
+                    cardData.push({ id: `char-${char}-${index}`, matchId: index, type: 'text', content: char, color: color });
+                    cardData.push({ id: `pinyin-${char}-${index}`, matchId: index, type: 'image', content: `${info.z} /${info.p}/`, color: color.replace('100', '200') });
+                });
+                return cardData;
+            };
+
+            const shuffleArray = (array) => {
+                const shuffled = [...array];
+                for (let i = shuffled.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                }
+                return shuffled.map(card => ({ ...card, uniqueId: Math.random().toString(36).substr(2, 9) }));
+            };
+
+            const initializeGame = () => {
+                const randomPattern = PATTERNS[Math.floor(Math.random() * PATTERNS.length)];
+                setCurrentPattern(randomPattern);
+
+                const rawCards = generateCards(currentLessonId);
+                setCards(shuffleArray(rawCards));
+                
+                setFlippedCards([]);
+                setMatchedIds([]);
+                setMoves(0);
+                setGameWon(false);
+                setIsDisabled(false);
+                
+                setTimeout(() => lucide.createIcons(), 100);
+            };
+
+            const handleCardClick = (uniqueId, matchId) => {
+                if (isDisabled || flippedCards.some(card => card.uniqueId === uniqueId) || matchedIds.includes(matchId)) return;
+                const newFlippedCards = [...flippedCards, { uniqueId, matchId }];
+                setFlippedCards(newFlippedCards);
+                if (newFlippedCards.length === 2) {
+                    setIsDisabled(true);
+                    setMoves(prev => prev + 1);
+                    if (newFlippedCards[0].matchId === newFlippedCards[1].matchId) {
+                        setMatchedIds(prev => {
+                            const next = [...prev, matchId];
+                            if (next.length === LESSONS.find(l => l.id === currentLessonId).words.length) {
+                                setTimeout(() => setGameWon(true), 800);
+                            }
+                            return next;
+                        });
+                        setFlippedCards([]);
+                        setIsDisabled(false);
+                    } else {
+                        setTimeout(() => {
+                            setFlippedCards([]);
+                            setIsDisabled(false);
+                        }, 1000);
+                    }
+                }
+            };
+
+            const handlePrint = () => {
+                window.print();
+            };
+
+            const getGridConfig = (count) => {
+                if (count === 16) return "grid-cols-2 md:grid-cols-4 max-w-4xl";
+                if (count === 18) return "grid-cols-2 md:grid-cols-3 lg:grid-cols-6 max-w-6xl";
+                if (count === 20) return "grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 max-w-5xl";
+                return "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 max-w-5xl";
+            };
+
+            const gridClass = getGridConfig(cards.length);
+
+            return (
+                <div className="min-h-screen font-sans selection:bg-sky-200">
+                    
+                    {/* 列印專用區域 */}
+                    <div className="hidden print-only">
+                        <PrintLayout lesson={LESSONS.find(l => l.id === currentLessonId)} />
+                    </div>
+
+                    {/* 遊戲主要介面 */}
+                    <div className="flex flex-col items-center py-6 md:py-12 px-2 md:px-4 overflow-x-hidden pb-24 no-print">
+                        <div className="w-full max-w-5xl mb-8 flex flex-col items-center">
+                            <div className="flex items-center gap-3 mb-4 bg-sky-100 px-4 py-1.5 rounded-full">
+                               <Icon name="book-open" className="w-4 h-4 text-sky-600" />
+                               <span className="text-sky-700 font-bold text-sm tracking-widest uppercase">學華語向前走 第二冊</span>
+                            </div>
+                            <h1 className="text-4xl md:text-6xl font-black text-slate-800 mb-4 drop-shadow-sm">生字翻翻樂</h1>
+                        </div>
+
+                        <div className="w-full max-w-4xl bg-white p-4 md:p-6 rounded-3xl shadow-xl border border-slate-100 flex flex-col md:flex-row items-center gap-6 mb-10 transition-all">
+                            <div className="flex-1 w-full">
+                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-tighter mb-2 ml-1">選擇課程</label>
+                                <div className="relative group">
+                                    <select 
+                                        value={currentLessonId}
+                                        onChange={(e) => setCurrentLessonId(Number(e.target.value))}
+                                        className="w-full appearance-none bg-slate-50 border-2 border-slate-100 text-slate-700 font-bold py-3.5 px-6 pr-12 rounded-2xl focus:outline-none focus:ring-4 focus:ring-sky-100 focus:border-sky-300 cursor-pointer transition-all text-lg"
+                                    >
+                                        {LESSONS.map(lesson => <option key={lesson.id} value={lesson.id}>{lesson.name}</option>)}
+                                    </select>
+                                    <Icon name="chevron-down" className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-400 pointer-events-none" />
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4 h-full pt-6 md:pt-0">
+                                <div className="bg-slate-50 px-6 py-3 rounded-2xl flex items-center gap-4 border border-slate-100">
+                                    <div className="flex items-center gap-2">
+                                        <Icon name="refresh-cw" className="w-5 h-5 text-sky-500" />
+                                        <span className="text-slate-500 font-bold">步數</span>
+                                        <span className="text-2xl font-black text-slate-800 tabular-nums">{moves}</span>
+                                    </div>
+                                </div>
+                                <button onClick={() => initializeGame()} className="bg-slate-800 hover:bg-slate-900 text-white px-8 py-3.5 rounded-2xl font-black transition-all shadow-lg active:scale-95">重洗牌</button>
+                            </div>
+                        </div>
+
+                        <div className={`grid ${gridClass} gap-3 md:gap-4 w-full flex-grow place-items-center transition-all duration-500`}>
+                            {cards.map((card) => {
+                                const isFlipped = flippedCards.some(f => f.uniqueId === card.uniqueId);
+                                const isMatched = matchedIds.includes(card.matchId);
+                                return (
+                                    <div key={card.uniqueId} className={`relative w-full h-32 md:h-44 cursor-pointer perspective-1000 transition-all duration-700 ${isMatched ? 'opacity-0 pointer-events-none scale-0 rotate-12' : 'opacity-100 scale-100'}`} onClick={() => handleCardClick(card.uniqueId, card.matchId)}>
+                                        <div className={`w-full h-full transition-transform duration-500 transform-style-3d relative rounded-3xl shadow-lg border-2 border-white ${isFlipped ? 'rotate-y-180' : ''}`}>
+                                            
+                                            <div className="card-face card-face-back bg-white flex items-center justify-center">
+                                                <div className={`absolute inset-0 bg-slate-50 opacity-60 rounded-[1.4rem] ${currentPattern}`}></div>
+                                                <div className="relative z-10 w-12 h-12 rounded-full bg-sky-50 flex items-center justify-center border-2 border-sky-100">
+                                                    <span className="text-xl text-sky-300 font-black select-none">?</span>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className={`card-face card-face-front flex items-center justify-center shadow-inner p-4 ${card.color}`}>
+                                                {card.type === 'text' ? <span className="text-4xl md:text-5xl font-black text-slate-800 select-none">{card.content}</span> : <span className="text-xl md:text-2xl font-bold text-slate-700 text-center leading-relaxed select-none">{card.content}</span>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <footer className="mt-12 w-full max-w-md mx-auto no-print">
+                            <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent w-full mb-6"></div>
+                            
+                            <div className="grid grid-cols-3 gap-4 mb-6">
+                                <button 
+                                    onClick={handlePrint}
+                                    className="flex flex-col items-center gap-2 group"
+                                >
+                                    <div className="w-12 h-12 bg-white border-2 border-slate-200 rounded-2xl flex items-center justify-center text-slate-400 group-hover:text-sky-500 group-hover:border-sky-200 group-hover:shadow-md transition-all">
+                                        <Icon name="printer" className="w-6 h-6" />
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-400 group-hover:text-sky-600 transition-colors">列印/PDF</span>
+                                </button>
+
+                                <button 
+                                    onClick={() => setShowInstallModal(true)}
+                                    className="flex flex-col items-center gap-2 group"
+                                >
+                                    <div className="w-12 h-12 bg-white border-2 border-slate-200 rounded-2xl flex items-center justify-center text-slate-400 group-hover:text-sky-500 group-hover:border-sky-200 group-hover:shadow-md transition-all">
+                                        <Icon name="download" className="w-6 h-6" />
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-400 group-hover:text-sky-600 transition-colors">App</span>
+                                </button>
+
+                                <div className="flex flex-col items-center gap-2 group cursor-default">
+                                    <div className="w-12 h-12 bg-white border-2 border-slate-200 rounded-2xl flex items-center justify-center text-slate-400">
+                                        <Icon name="feather" className="w-6 h-6" />
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-400">Sophia Wong</span>
+                                </div>
+                            </div>
+
+                            {/* Busuanzi 人數計次 (移除 display:none，確保可見) */}
+                            <div className="text-center text-xs text-slate-300 font-medium tracking-wide pb-4">
+                                <span id="busuanzi_container_site_uv">
+                                    👀 訪客人數：<span id="busuanzi_value_site_uv" className="font-bold text-slate-400">...</span> 人
+                                </span>
+                            </div>
+                        </footer>
+
+                        {gameWon && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-fade-in">
+                                <div className="bg-white rounded-[2.5rem] p-10 max-w-md w-full text-center shadow-2xl border-b-8 border-yellow-400 transform animate-pop-in relative overflow-hidden">
+                                    <div className="flex justify-center mb-6">
+                                        <div className="bg-yellow-50 p-6 rounded-full relative">
+                                            <Icon name="trophy" className="w-16 h-16 text-yellow-500 animate-bounce" />
+                                        </div>
+                                    </div>
+                                    <h2 className="text-4xl font-black text-slate-800 mb-2">挑戰成功！</h2>
+                                    <p className="text-slate-500 mb-8 font-medium text-lg leading-relaxed">
+                                        太厲害了！你完成了 <span className="text-sky-600 font-bold">{LESSONS.find(l => l.id === currentLessonId)?.name}</span><br/>
+                                        總共只花了 <span className="text-slate-800 font-black">{moves}</span> 個步數。
+                                    </p>
+                                    <button onClick={() => initializeGame()} className="w-full bg-sky-500 hover:bg-sky-600 text-white text-xl font-black py-4 rounded-2xl shadow-xl shadow-sky-100 transition-all active:scale-95">繼續挑戰</button>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {showInstallModal && <InstallGuideModal onClose={() => setShowInstallModal(false)} />}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
