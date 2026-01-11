@@ -181,7 +181,7 @@
             '思': { z: 'ㄙ', p: 'si' },
         };
 
-        const LESSONS = [
+        const DEFAULT_LESSONS = [
             { id: 1, name: "第一課：新同學", words: "新同學自己年跟比" },
             { id: 2, name: "第二課：我爸爸做生意", words: "外公以前工作班後" },
             { id: 3, name: "第三課：去超級市場", words: "去近買東西魚還可" },
@@ -208,20 +208,140 @@
             'pattern-large-dots'
         ];
 
-        // 列印佈局組件
+        // 解析生字字串的 helper function
+        // 支援 "字" 或 "字(注音/拼音)" 格式
+        const parseLessonWords = (wordString) => {
+            // Regex matches:
+            // Group 1: A character that is NOT space, ( or )
+            // Group 2 (Optional): Content inside parentheses immediately following
+            const regex = /([^\s\(\)])(?:\(([^)]*)\))?/g;
+            const matches = [...wordString.matchAll(regex)];
+            return matches.map(match => ({
+                char: match[1],
+                customPinyin: match[2]
+            }));
+        };
+
+        // 刪除確認視窗 (新增組件)
+        const DeleteConfirmModal = ({ onClose, onConfirm }) => {
+            return (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fade-in no-print" onClick={onClose}>
+                    <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl relative animate-pop-in" onClick={e => e.stopPropagation()}>
+                        <div className="flex flex-col items-center text-center">
+                            <div className="bg-red-100 p-4 rounded-full mb-4">
+                                <Icon name="alert-triangle" className="w-8 h-8 text-red-500" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">確定要刪除嗎？</h3>
+                            <p className="text-slate-500 mb-6">刪除後無法復原，您確定要刪除這個自訂課程嗎？</p>
+                            
+                            <div className="flex gap-3 w-full">
+                                <button onClick={onClose} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 rounded-xl transition-colors active:scale-95">
+                                    取消
+                                </button>
+                                <button onClick={onConfirm} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-red-200 transition-colors active:scale-95">
+                                    刪除
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 自訂課程視窗 (支援新增與修改)
+        const CustomLessonModal = ({ onClose, onSave, initialData }) => {
+            const [name, setName] = useState(initialData ? initialData.name : '');
+            const [words, setWords] = useState(initialData ? initialData.words : '');
+
+            const handleSave = () => {
+                if (!name.trim() || !words.trim()) {
+                    alert('請輸入課程名稱與生字內容');
+                    return;
+                }
+                onSave(initialData ? initialData.id : null, name, words);
+                onClose();
+            };
+
+            return (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fade-in no-print" onClick={onClose}>
+                    <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl relative animate-pop-in" onClick={e => e.stopPropagation()}>
+                        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+                            <Icon name="x" className="w-6 h-6" />
+                        </button>
+                        
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="bg-sky-100 p-3 rounded-2xl">
+                                <Icon name={initialData ? "pencil" : "plus"} className="w-6 h-6 text-sky-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800">
+                                {initialData ? '修改自訂課程' : '新增自訂課程'}
+                            </h3>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-600 mb-1">課程名稱</label>
+                                <input 
+                                    type="text" 
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    placeholder="例如：第一課複習"
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 font-bold text-slate-700"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-600 mb-1">生字內容</label>
+                                <textarea 
+                                    value={words}
+                                    onChange={(e) => setWords(e.target.value)}
+                                    placeholder="輸入格式範例：
+1. 樹(ㄕㄨˋ)葉(ㄧㄝˋ)
+2. 蘋(píng)果(guǒ)
+3. 貓(ㄇㄠ/māo)"
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400 font-bold text-slate-700 h-32 resize-none leading-relaxed"
+                                />
+                                <div className="text-xs text-slate-500 mt-2 bg-slate-100 p-2 rounded-lg">
+                                    <p className="font-bold mb-1">💡 如何自訂注音/拼音？</p>
+                                    <ul className="list-disc pl-4 space-y-1">
+                                        <li>在字後面加上括號 <b>( )</b> 填入注音。</li>
+                                        <li>例如：<b>樹(ㄕㄨˋ)</b></li>
+                                        <li>若不加括號，系統會嘗試自動抓取，或顯示原字。</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button onClick={handleSave} className="w-full mt-6 bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-xl active:scale-95 transition-transform shadow-lg shadow-sky-100">
+                            {initialData ? '更新課程' : '儲存並開始'}
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
         const PrintLayout = ({ lesson }) => {
+            const parsedWords = parseLessonWords(String(lesson.words || ""));
             const printCards = [];
-            Array.from(lesson.words).forEach((char, index) => {
-                const info = PINYIN_MAP[char] || { z: '??', p: '??' };
+            
+            parsedWords.forEach((item) => {
+                const { char, customPinyin } = item;
                 printCards.push({ type: 'text', content: char });
-                printCards.push({ type: 'pinyin', content: `${info.z} /${info.p}/` });
+                
+                let pinyinContent;
+                if (customPinyin) {
+                    pinyinContent = customPinyin;
+                } else {
+                    const info = PINYIN_MAP[char] || { z: char, p: '' };
+                    pinyinContent = info.p ? `${info.z} /${info.p}/` : info.z;
+                }
+                printCards.push({ type: 'pinyin', content: pinyinContent });
             });
 
             return (
                 <div className="w-full">
                     <div className="text-center mb-6">
                         <h1 className="text-3xl font-black text-slate-800 mb-2">{lesson.name} - 生字卡</h1>
-                        <p className="text-slate-500">共 {lesson.words.length} 個生字，{printCards.length} 張卡牌</p>
+                        <p className="text-slate-500">共 {parsedWords.length} 個生字，{printCards.length} 張卡牌</p>
                     </div>
                     
                     <div className="grid grid-cols-4 gap-4">
@@ -337,6 +457,7 @@
         };
 
         function App() {
+            const [lessons, setLessons] = useState(DEFAULT_LESSONS);
             const [currentLessonId, setCurrentLessonId] = useState(1);
             const [cards, setCards] = useState([]);
             const [flippedCards, setFlippedCards] = useState([]);
@@ -345,9 +466,11 @@
             const [moves, setMoves] = useState(0);
             const [gameWon, setGameWon] = useState(false);
             const [showInstallModal, setShowInstallModal] = useState(false);
+            const [showCustomModal, setShowCustomModal] = useState(false);
+            const [showDeleteModal, setShowDeleteModal] = useState(false); // 新增刪除確認狀態
+            const [editingLesson, setEditingLesson] = useState(null);
             const [currentPattern, setCurrentPattern] = useState('pattern-large-dots'); 
 
-            // 載入 Busuanzi 計數器 (修正版: 強制顯示 & HTTPS)
             useEffect(() => {
                 if (document.getElementById('busuanzi-script')) return;
                 const script = document.createElement('script');
@@ -358,18 +481,79 @@
             }, []);
 
             useEffect(() => {
+                const savedLessons = localStorage.getItem('custom_lessons');
+                if (savedLessons) {
+                    const parsed = JSON.parse(savedLessons);
+                    setLessons([...DEFAULT_LESSONS, ...parsed]);
+                }
+            }, []);
+
+            useEffect(() => {
                 initializeGame();
-            }, [currentLessonId]);
+            }, [currentLessonId, lessons]);
+
+            const handleSaveCustomLesson = (id, name, words) => {
+                let newLessons;
+                if (id) {
+                    newLessons = lessons.map(l => l.id === id ? { ...l, name, words } : l);
+                } else {
+                    const newId = Date.now();
+                    const newLesson = { id: newId, name: name, words: words, isCustom: true };
+                    newLessons = [...lessons, newLesson];
+                    setCurrentLessonId(newId);
+                }
+                
+                setLessons(newLessons);
+                const customOnly = newLessons.filter(l => l.isCustom);
+                localStorage.setItem('custom_lessons', JSON.stringify(customOnly));
+            };
+
+            // 觸發刪除點擊
+            const handleDeleteClick = (e) => {
+                e.stopPropagation();
+                setShowDeleteModal(true);
+            };
+
+            // 執行實際刪除動作
+            const performDelete = () => {
+                const lessonId = currentLessonId;
+                const newLessons = lessons.filter(l => l.id !== lessonId);
+                setLessons(newLessons);
+                
+                // 切換回第一課
+                setCurrentLessonId(1);
+
+                const customOnly = newLessons.filter(l => l.isCustom);
+                localStorage.setItem('custom_lessons', JSON.stringify(customOnly));
+                setShowDeleteModal(false);
+            };
 
             const generateCards = (lessonId) => {
-                const lesson = LESSONS.find(l => l.id === lessonId);
-                const words = Array.from(lesson.words);
+                const lesson = lessons.find(l => l.id === lessonId) || lessons[0];
+                const parsedWords = parseLessonWords(String(lesson.words || ""));
+                
                 const cardData = [];
-                words.forEach((char, index) => {
-                    const info = PINYIN_MAP[char] || { z: '??', p: '??' };
+                parsedWords.forEach((item, index) => {
+                    const { char, customPinyin } = item;
                     const color = COLORS[index % COLORS.length];
+                    
                     cardData.push({ id: `char-${char}-${index}`, matchId: index, type: 'text', content: char, color: color });
-                    cardData.push({ id: `pinyin-${char}-${index}`, matchId: index, type: 'image', content: `${info.z} /${info.p}/`, color: color.replace('100', '200') });
+                    
+                    let pinyinContent;
+                    if (customPinyin) {
+                        pinyinContent = customPinyin;
+                    } else {
+                        const info = PINYIN_MAP[char] || { z: char, p: '' };
+                        pinyinContent = info.p ? `${info.z} /${info.p}/` : info.z;
+                    }
+                    
+                    cardData.push({ 
+                        id: `pinyin-${char}-${index}`, 
+                        matchId: index, 
+                        type: 'image',
+                        content: pinyinContent, 
+                        color: color.replace('100', '200') 
+                    });
                 });
                 return cardData;
             };
@@ -409,7 +593,11 @@
                     if (newFlippedCards[0].matchId === newFlippedCards[1].matchId) {
                         setMatchedIds(prev => {
                             const next = [...prev, matchId];
-                            if (next.length === LESSONS.find(l => l.id === currentLessonId).words.length) {
+                            // 計算正確的配對總數 (基於解析後的生字數量)
+                            const currentLesson = lessons.find(l => l.id === currentLessonId) || lessons[0];
+                            const parsedCount = parseLessonWords(String(currentLesson.words || "")).length;
+                            
+                            if (next.length === parsedCount) {
                                 setTimeout(() => setGameWon(true), 800);
                             }
                             return next;
@@ -438,15 +626,15 @@
 
             const gridClass = getGridConfig(cards.length);
 
+            const isCurrentCustom = lessons.find(l => l.id === currentLessonId)?.isCustom;
+
             return (
                 <div className="min-h-screen font-sans selection:bg-sky-200">
                     
-                    {/* 列印專用區域 */}
                     <div className="hidden print-only">
-                        <PrintLayout lesson={LESSONS.find(l => l.id === currentLessonId)} />
+                        <PrintLayout lesson={lessons.find(l => l.id === currentLessonId) || lessons[0]} />
                     </div>
 
-                    {/* 遊戲主要介面 */}
                     <div className="flex flex-col items-center py-6 md:py-12 px-2 md:px-4 overflow-x-hidden pb-24 no-print">
                         <div className="w-full max-w-5xl mb-8 flex flex-col items-center">
                             <div className="flex items-center gap-3 mb-4 bg-sky-100 px-4 py-1.5 rounded-full">
@@ -456,29 +644,71 @@
                             <h1 className="text-4xl md:text-6xl font-black text-slate-800 mb-4 drop-shadow-sm">生字翻翻樂</h1>
                         </div>
 
-                        <div className="w-full max-w-4xl bg-white p-4 md:p-6 rounded-3xl shadow-xl border border-slate-100 flex flex-col md:flex-row items-center gap-6 mb-10 transition-all">
+                        <div className="w-full max-w-4xl bg-white p-4 md:p-6 rounded-3xl shadow-xl border border-slate-100 flex flex-col md:flex-row items-center gap-4 md:gap-6 mb-10 transition-all">
                             <div className="flex-1 w-full">
                                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-tighter mb-2 ml-1">選擇課程</label>
-                                <div className="relative group">
-                                    <select 
-                                        value={currentLessonId}
-                                        onChange={(e) => setCurrentLessonId(Number(e.target.value))}
-                                        className="w-full appearance-none bg-slate-50 border-2 border-slate-100 text-slate-700 font-bold py-3.5 px-6 pr-12 rounded-2xl focus:outline-none focus:ring-4 focus:ring-sky-100 focus:border-sky-300 cursor-pointer transition-all text-lg"
+                                <div className="flex gap-2">
+                                    <div className="relative group flex-1">
+                                        <select 
+                                            value={currentLessonId}
+                                            onChange={(e) => setCurrentLessonId(Number(e.target.value))}
+                                            className="w-full appearance-none bg-slate-50 border-2 border-slate-100 text-slate-700 font-bold py-3.5 px-6 pr-12 rounded-2xl focus:outline-none focus:ring-4 focus:ring-sky-100 focus:border-sky-300 cursor-pointer transition-all text-lg"
+                                        >
+                                            {lessons.map(lesson => (
+                                                <option key={lesson.id} value={lesson.id}>
+                                                    {lesson.name} {lesson.isCustom ? '(自訂)' : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <Icon name="chevron-down" className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-400 pointer-events-none" />
+                                    </div>
+                                    
+                                    {/* 新增按鈕：清除 editingLesson 狀態 */}
+                                    <button 
+                                        onClick={() => {
+                                            setEditingLesson(null);
+                                            setShowCustomModal(true);
+                                        }}
+                                        className="bg-sky-100 hover:bg-sky-200 text-sky-600 p-3.5 rounded-2xl transition-colors active:scale-95"
+                                        title="新增自訂課程"
                                     >
-                                        {LESSONS.map(lesson => <option key={lesson.id} value={lesson.id}>{lesson.name}</option>)}
-                                    </select>
-                                    <Icon name="chevron-down" className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-400 pointer-events-none" />
+                                        <Icon name="plus" className="w-6 h-6" />
+                                    </button>
+
+                                    {/* 修改與刪除 (只有選中自訂課程時顯示) */}
+                                    {isCurrentCustom && (
+                                        <>
+                                            <button 
+                                                onClick={() => {
+                                                    setEditingLesson(lessons.find(l => l.id === currentLessonId));
+                                                    setShowCustomModal(true);
+                                                }}
+                                                className="bg-orange-50 hover:bg-orange-100 text-orange-500 p-3.5 rounded-2xl transition-colors active:scale-95"
+                                                title="修改此課程"
+                                            >
+                                                <Icon name="pencil" className="w-6 h-6" />
+                                            </button>
+                                            
+                                            <button 
+                                                onClick={handleDeleteClick}
+                                                className="bg-red-50 hover:bg-red-100 text-red-500 p-3.5 rounded-2xl transition-colors active:scale-95"
+                                                title="刪除此課程"
+                                            >
+                                                <Icon name="trash-2" className="w-6 h-6" />
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
-                            <div className="flex items-center gap-4 h-full pt-6 md:pt-0">
-                                <div className="bg-slate-50 px-6 py-3 rounded-2xl flex items-center gap-4 border border-slate-100">
+                            <div className="flex items-center gap-4 h-full pt-2 md:pt-0 w-full md:w-auto justify-between md:justify-start">
+                                <div className="bg-slate-50 px-6 py-3 rounded-2xl flex items-center gap-4 border border-slate-100 flex-1 md:flex-none justify-center">
                                     <div className="flex items-center gap-2">
                                         <Icon name="refresh-cw" className="w-5 h-5 text-sky-500" />
                                         <span className="text-slate-500 font-bold">步數</span>
                                         <span className="text-2xl font-black text-slate-800 tabular-nums">{moves}</span>
                                     </div>
                                 </div>
-                                <button onClick={() => initializeGame()} className="bg-slate-800 hover:bg-slate-900 text-white px-8 py-3.5 rounded-2xl font-black transition-all shadow-lg active:scale-95">重洗牌</button>
+                                <button onClick={() => initializeGame()} className="bg-slate-800 hover:bg-slate-900 text-white px-8 py-3.5 rounded-2xl font-black transition-all shadow-lg active:scale-95 whitespace-nowrap">重洗牌</button>
                             </div>
                         </div>
 
@@ -538,7 +768,6 @@
                                 </div>
                             </div>
 
-                            {/* Busuanzi 人數計次 (移除 display:none，確保可見) */}
                             <div className="text-center text-xs text-slate-300 font-medium tracking-wide pb-4">
                                 <span id="busuanzi_container_site_uv">
                                     👀 訪客人數：<span id="busuanzi_value_site_uv" className="font-bold text-slate-400">...</span> 人
@@ -556,7 +785,7 @@
                                     </div>
                                     <h2 className="text-4xl font-black text-slate-800 mb-2">挑戰成功！</h2>
                                     <p className="text-slate-500 mb-8 font-medium text-lg leading-relaxed">
-                                        太厲害了！你完成了 <span className="text-sky-600 font-bold">{LESSONS.find(l => l.id === currentLessonId)?.name}</span><br/>
+                                        太厲害了！你完成了 <span className="text-sky-600 font-bold">{lessons.find(l => l.id === currentLessonId)?.name}</span><br/>
                                         總共只花了 <span className="text-slate-800 font-black">{moves}</span> 個步數。
                                     </p>
                                     <button onClick={() => initializeGame()} className="w-full bg-sky-500 hover:bg-sky-600 text-white text-xl font-black py-4 rounded-2xl shadow-xl shadow-sky-100 transition-all active:scale-95">繼續挑戰</button>
@@ -565,6 +794,23 @@
                         )}
                         
                         {showInstallModal && <InstallGuideModal onClose={() => setShowInstallModal(false)} />}
+                        
+                        {/* 自訂課程視窗 (傳入 initialData 用於修改) */}
+                        {showCustomModal && (
+                            <CustomLessonModal 
+                                onClose={() => setShowCustomModal(false)} 
+                                onSave={handleSaveCustomLesson} 
+                                initialData={editingLesson}
+                            />
+                        )}
+
+                        {/* 刪除確認視窗 */}
+                        {showDeleteModal && (
+                            <DeleteConfirmModal 
+                                onClose={() => setShowDeleteModal(false)} 
+                                onConfirm={performDelete} 
+                            />
+                        )}
                     </div>
                 </div>
             );
